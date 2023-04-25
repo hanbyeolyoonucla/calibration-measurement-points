@@ -28,7 +28,7 @@ for ii = 1:6
 end
 
 % tcp information
-TCP = [-0.4590164281	-0.9164464634	161.3819234	168.2432879	85.64040621	11.58103583]; % x y z Rx Ry Rz
+TCP = [-5.853503192	0.09048161127	146.1547325	173.9416558	85.61107535	5.6322697]; % x y z Rx Ry Rz
 T_tool = XYZWPR2SE3(TCP); % SE(3)
 % T_tool = eye(4,4);
 
@@ -36,8 +36,10 @@ nrobot = SerialLink(nL,'tool',T_tool,'name',"Final Robot");
 
 %% 1. Generate Normal Distributed Data
 
-mu = [4.333911931	13.46457946	39.44606267	-89.63181963	-88.44431986	76.71547582];
-sigma = [90 90 90 90 90 1080];
+mu = [12.682249, 38.749025, 24.033056, -89.276325, -96.694194, 59.585503];
+joint15 = 1080*2;
+joint6 = 1080*2;
+sigma = [joint15 joint15 joint15 joint15 joint15 joint6];
 sigma = diag(sigma);
 
 % check the average configuration
@@ -46,16 +48,20 @@ nrobot.plot(mu*pi/180)
 Z_avg = nrobot.fkine(mu*pi/180).a;
 
 % generate data based on normal distribution
-N = 1000; % number of generated thetas
-n = 80; % number of thetas we want after pose check
+N = 20000; % number of generated thetas
+n = 200; % number of thetas we want after pose check
 thetas = mvnrnd(mu, sigma, N);
 thetas = thetas * pi/180; % conversion from degree to radian
 
+% check joint limit
+ul = [175 90 70 170 115 180]* pi/180;
+ll = [-175 -70 -135 -170 -115 -180]* pi/180;
+% thetas = (ul+ll)/2 + 2*(rand(N,6)-0.5).*(ul-ll)/2;
 %% 2. Check Position and Orientation Constraints
 
 % define box and orientation constraints
-box_c = [122 241 189]';
-box_l = 80/2;
+box_c = nrobot.fkine(mu*pi/180).t;
+box_l = 160/2;
 box = [box_c - box_l, box_c + box_l];
 angle = pi/2;
 
@@ -68,9 +74,16 @@ for ii = 1:N
     P = T.t; % position
     Z = T.a; % z direction of end effector
     points = [points P];
-    if all(P >= box(:,1)) && all(P <= box(:,2)) % check position
-        if subspace(Z, Z_avg) <= angle % check orientation
-            idx = [idx ii];
+%     if q(6) > 180
+%         q(6) = q(6)-360;
+%     elseif q(6) < -180
+%         q(6) = q(6) + 360;
+%     end
+    if all(q <= ul) && all(q >= ll) % check joint limit
+        if all(P >= box(:,1)) && all(P <= box(:,2)) % check position
+            if subspace(Z, Z_avg) <= angle % check orientation
+                idx = [idx ii];
+            end
         end
     end
 end
@@ -83,7 +96,7 @@ thetas = thetas(idx,:)*180/pi; % from radian to degree
 disp(size(thetas)) % check the number of data
 
 % save the result
-writematrix(thetas,'normal_dist_data.txt','Delimiter','tab')
+writematrix(thetas,'uniform_dist_data_0deg_160cube.txt','Delimiter','tab')
 
 %% Figure Results
 
